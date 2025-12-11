@@ -139,27 +139,39 @@ def _estimate_sampling_interval_seconds(df_session: pd.DataFrame) -> float:
 def _compute_window_mdp_for_session(
     df_session: pd.DataFrame,
     window_seconds_list: tuple = (10, 20, 30),
-    mp_col: str = 'mp_eq'
+    mp_col: str = "mp_eq",
 ) -> dict:
     """
     Compute peak mean power demand (MDP) for each window duration.
-    
+
     For each window W:
     - Estimate sample count per window = round(W / dt), minimum 1
     - Apply rolling mean with that window size
     - MDP_W = maximum of the rolling mean
     """
-    result = {}
-    
+    result: dict = {}
+
+    # If there is no data, just return NaNs for all requested windows
+    if df_session.empty:
+        return {f"mdp_{int(w)}": np.nan for w in window_seconds_list}
+
     dt = _estimate_sampling_interval_seconds(df_session)
     mp_series = df_session[mp_col].fillna(0)
-    
+
+    # Guard against bad dt values (0, negative, NaN, inf)
+    if not np.isfinite(dt) or dt <= 0:
+        # Option A: mark this session's MDPs as unavailable
+        return {f"mdp_{int(w)}": np.nan for w in window_seconds_list}
+
+        # If you prefer a fallback instead, comment the line above and use:
+        # dt = 1.0
+
     for window_sec in window_seconds_list:
-        window_samples = max(1, round(window_sec / dt))
+        window_samples = max(1, int(round(window_sec / dt)))
         rolling_mean = mp_series.rolling(window=window_samples, min_periods=1).mean()
         mdp_value = float(rolling_mean.max())
-        result[f'mdp_{int(window_sec)}'] = mdp_value
-    
+        result[f"mdp_{int(window_sec)}"] = mdp_value
+
     return result
 
 
